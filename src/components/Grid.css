@@ -1,0 +1,92 @@
+.grid-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  width: 100%;
+  height: 100%;
+  /* Calculate available space for the grid */
+  --available-width: calc(100vw - 320px - 60px); /* viewport - sidebar - padding */
+  --available-height: calc(100vh - 40px); /* viewport - container padding */
+  --grid-size: 10; /* default grid size */
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-size), 1fr);
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  
+  /* Calculate the maximum size that fits both width and height */
+  --max-grid-width: calc(var(--available-width));
+  --max-grid-height: calc(var(--available-height));
+  --max-container-size: min(var(--max-grid-width), var(--max-grid-height));
+  
+  /* Account for container padding and borders */
+  --container-padding: 40px; /* 20px padding on each side */
+  --container-border: 4px; /* 2px border on each side */
+  --container-overhead: calc(var(--container-padding) + var(--container-border));
+  
+  /* Calculate available space for actual grid content */
+  --available-grid-space: calc(var(--max-container-size) - var(--container-overhead));
+  
+  /* Calculate cell size based on available space */
+  --total-gap-space: calc((var(--grid-size) - 1) * 3px); /* space taken by gaps */
+  --cell-size: calc((var(--available-grid-space) - var(--total-gap-space)) / var(--grid-size));
+  
+  /* Calculate actual grid content size (cells + gaps) */
+  --actual-grid-content-size: calc(var(--cell-size) * var(--grid-size) + var(--total-gap-space));
+  
+  /* Set container size to content size + padding + borders */
+  width: calc(var(--actual-grid-content-size) + var(--container-overhead));
+  height: calc(var(--actual-grid-content-size) + var(--container-overhead));
+}
+
+.grid-16 {
+  --grid-size: 16;
+  grid-template-columns: repeat(16, 1fr);
+}
+
+.grid-20 {
+  --grid-size: 20;
+  grid-template-columns: repeat(20, 1fr);
+}
+
+.grid-row {
+  display: contents;
+}
+
+@media (max-width: 768px) {
+  .grid {
+    gap: 2px;
+    padding: 15px;
+    --total-gap-space: calc((var(--grid-size) - 1) * 2px); /* smaller gaps on mobile */
+    --container-padding: 30px; /* 15px padding on each side */
+  }
+  
+  .grid-container {
+    padding: 10px;
+    --available-width: calc(100vw - 20px); /* full width minus padding */
+    --available-height: calc(100vh - 20px); /* full height minus padding */
+  }
+}
+
+@media (max-width: 480px) {
+  .grid {
+    gap: 1px;
+    padding: 10px;
+    --total-gap-space: calc((var(--grid-size) - 1) * 1px); /* even smaller gaps on small mobile */
+    --container-padding: 20px; /* 10px padding on each side */
+  }
+  
+  .grid-container {
+    padding: 5px;
+    --available-width: calc(100vw - 10px); /* full width minus padding */
+    --available-height: calc(100vh - 10px); /* full height minus padding */
+  }
+} 

@@ -1,0 +1,117 @@
+.cell {
+  width: var(--cell-size, 40px);
+  height: var(--cell-size, 40px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: min(10px, calc(var(--cell-size, 40px) * 0.25));
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.cell:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.cell.owned {
+  border-width: 3px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.cell.empty {
+  background: rgba(255, 255, 255, 0.05);
+  border-style: dashed;
+  border-width: 3px;
+}
+
+.cell.animating {
+  animation: pulse 0.5s ease-in-out;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.dots-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+}
+
+.dot {
+  width: calc(var(--cell-size, 40px) * 0.2);
+  height: calc(var(--cell-size, 40px) * 0.2);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  animation: dotAppear 0.3s ease-out;
+}
+
+@keyframes dotAppear {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.empty-dot {
+  width: calc(var(--cell-size, 40px) * 0.5);
+  height: calc(var(--cell-size, 40px) * 0.5);
+  border: calc(var(--cell-size, 40px) * 0.075) solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: emptyDotAppear 0.5s ease-out;
+}
+
+@keyframes emptyDotAppear {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  /* Cell sizes are now dynamic and will adapt automatically */
+  .dots-container {
+    gap: 1px;
+    padding: 2px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Cell sizes are now dynamic and will adapt automatically */
+  .dots-container {
+    gap: 1px;
+    padding: 2px;
+  }
+} 
