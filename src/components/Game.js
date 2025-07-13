@@ -33,6 +33,8 @@ const Game = () => {
   const [numberOfPlayers, setNumberOfPlayers] = useState(2);
   const [gridSize, setGridSize] = useState(10);
   const [gameStarted, setGameStarted] = useState(false);
+  const [gameMode, setGameMode] = useState("multiplayer"); // "multiplayer" or "ai"
+  const [aiDifficulty, setAiDifficulty] = useState("medium"); // "easy", "medium", "hard"
   const [currentPlayer, setCurrentPlayer] = useState(0);
   const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
   const [grid, setGrid] = useState(() => {
@@ -76,6 +78,8 @@ const Game = () => {
     }
   }, [gridSize, gameStarted]);
 
+  // AI Move Handler will be defined after all functions
+
   const updatePlayerName = (index, newName) => {
     const updatedNames = [...playerNames];
     updatedNames[index] = newName.trim();
@@ -83,8 +87,245 @@ const Game = () => {
   };
 
   const getPlayerDisplayName = (index) => {
+    if (gameMode === "ai" && index > 0) {
+      return `AI ${index} (${aiDifficulty})`;
+    }
     return playerNames[index] || `Player ${index + 1}`;
   };
+
+  const isAiPlayer = useCallback(
+    (index) => {
+      return gameMode === "ai" && index > 0;
+    },
+    [gameMode]
+  );
+
+  // AI Logic Functions
+  const getValidMoves = useCallback(
+    (grid, playerId) => {
+      const validMoves = [];
+
+      for (let row = 0; row < gridSize; row++) {
+        for (let col = 0; col < gridSize; col++) {
+          const cell = grid[row][col];
+
+          // Can place dot if:
+          // 1. Cell is empty (no owner)
+          // 2. Cell belongs to this player
+          // 3. Cell is an empty circle belonging to this player
+          if (
+            cell.owner === null ||
+            cell.owner === playerId ||
+            (cell.isEmpty && cell.owner === playerId)
+          ) {
+            validMoves.push({ row, col });
+          }
+        }
+      }
+
+      return validMoves;
+    },
+    [gridSize]
+  );
+
+  const evaluateMove = useCallback(
+    (grid, move, playerId) => {
+      const { row, col } = move;
+      const maxDots = getMaxDots(row, col, gridSize);
+      const currentDots = grid[row][col].dots;
+
+      let score = 0;
+
+      // Prefer moves that won't immediately explode
+      if (currentDots + 1 < maxDots) {
+        score += 10;
+      }
+
+      // Prefer cells with more neighbors (more potential for chain reactions)
+      score += maxDots * 2;
+
+      // Prefer cells that are close to explosion (but not immediate)
+      if (currentDots + 1 === maxDots - 1) {
+        score += 5;
+      }
+
+      // Avoid placing in corners initially (fewer neighbors)
+      if (maxDots === 2) {
+        score -= 3;
+      }
+
+      return score;
+    },
+    [gridSize]
+  );
+
+  const evaluateStrategicValue = useCallback(
+    (grid, move, playerId) => {
+      const { row, col } = move;
+      let strategicScore = 0;
+
+      // Look for opponent cells that are close to exploding
+      const neighbors = getNeighbors(row, col, gridSize);
+      for (const [nRow, nCol] of neighbors) {
+        const neighborCell = grid[nRow][nCol];
+        if (neighborCell.owner !== null && neighborCell.owner !== playerId) {
+          const neighborMaxDots = getMaxDots(nRow, nCol, gridSize);
+
+          // If neighbor is close to exploding, this move might trigger it
+          if (neighborCell.dots >= neighborMaxDots - 1) {
+            strategicScore += 8;
+          }
+        }
+      }
+
+      // Prefer moves that build up strategic positions
+      const currentDots = grid[row][col].dots;
+      const maxDots = getMaxDots(row, col, gridSize);
+
+      if (currentDots + 1 === maxDots - 1) {
+        strategicScore += 6; // Building up for future explosion
+      }
+
+      return strategicScore;
+    },
+    [gridSize]
+  );
+
+  const evaluateWinningMove = useCallback(
+    (grid, move, playerId) => {
+      const { row, col } = move;
+      let winningScore = 0;
+
+      // Simulate this move and check if it leads to capturing opponent cells
+      const testGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+      testGrid[row][col] = {
+        dots: testGrid[row][col].dots + 1,
+        owner: playerId,
+        isEmpty: false,
+      };
+
+      // Check if this move would cause explosions that capture opponent cells
+      const neighbors = getNeighbors(row, col, gridSize);
+      const currentDots = testGrid[row][col].dots;
+      const maxDots = getMaxDots(row, col, gridSize);
+
+      if (currentDots >= maxDots) {
+        // This move will cause an explosion
+        let opponentCellsCaptured = 0;
+
+        neighbors.forEach(([nRow, nCol]) => {
+          const neighborCell = testGrid[nRow][nCol];
+          if (neighborCell.owner !== playerId) {
+            opponentCellsCaptured++;
+            if (neighborCell.owner !== null) {
+              winningScore += 15; // Capturing opponent cell is very valuable
+            }
+          }
+        });
+
+        // Bonus for moves that capture many opponent cells
+        if (opponentCellsCaptured >= 2) {
+          winningScore += 25;
+        }
+
+        // Look for chain reaction potential
+        neighbors.forEach(([nRow, nCol]) => {
+          const neighborMaxDots = getMaxDots(nRow, nCol, gridSize);
+          const neighborAfterMove = testGrid[nRow][nCol].dots + 1;
+
+          if (neighborAfterMove >= neighborMaxDots) {
+            // This neighbor will also explode, creating a chain reaction
+            winningScore += 20;
+          }
+        });
+      }
+
+      // Prefer taking opponent cells even without immediate explosion
+      const currentCell = grid[row][col];
+      if (currentCell.owner !== null && currentCell.owner !== playerId) {
+        winningScore += 10; // Taking opponent cell is good
+      }
+
+      return winningScore;
+    },
+    [gridSize]
+  );
+
+  const getAiMove = useCallback(
+    (grid, playerId, difficulty) => {
+      const validMoves = getValidMoves(grid, playerId);
+
+      if (validMoves.length === 0) {
+        return null;
+      }
+
+      switch (difficulty) {
+        case "easy":
+          // Random move
+          return validMoves[Math.floor(Math.random() * validMoves.length)];
+
+        case "medium":
+          // Aggressive strategy: prioritize winning moves
+          const mediumScoredMoves = validMoves.map((move) => ({
+            ...move,
+            score:
+              evaluateMove(grid, move, playerId) +
+              evaluateWinningMove(grid, move, playerId) +
+              evaluateStrategicValue(grid, move, playerId),
+          }));
+
+          mediumScoredMoves.sort((a, b) => b.score - a.score);
+
+          // If there's a clearly winning move (score > 20), take it
+          if (mediumScoredMoves[0].score > 20) {
+            return mediumScoredMoves[0];
+          }
+
+          // Otherwise pick from top 3 moves with some randomness
+          const topMediumMoves = mediumScoredMoves.slice(
+            0,
+            Math.min(3, mediumScoredMoves.length)
+          );
+          return topMediumMoves[
+            Math.floor(Math.random() * topMediumMoves.length)
+          ];
+
+        case "hard":
+          // Very aggressive strategy: prioritize winning and capturing opponent cells
+          const hardScoredMoves = validMoves.map((move) => ({
+            ...move,
+            score:
+              evaluateMove(grid, move, playerId) +
+              evaluateWinningMove(grid, move, playerId) * 2 + // Double weight for winning moves
+              evaluateStrategicValue(grid, move, playerId),
+          }));
+
+          hardScoredMoves.sort((a, b) => b.score - a.score);
+
+          // Always take the best move if it's a winning move (score > 30)
+          if (hardScoredMoves[0].score > 30) {
+            return hardScoredMoves[0];
+          }
+
+          // 80% chance to take the best move, 20% chance for top 2
+          if (Math.random() < 0.8) {
+            return hardScoredMoves[0];
+          } else {
+            const topHardMoves = hardScoredMoves.slice(
+              0,
+              Math.min(2, hardScoredMoves.length)
+            );
+            return topHardMoves[
+              Math.floor(Math.random() * topHardMoves.length)
+            ];
+          }
+
+        default:
+          return validMoves[Math.floor(Math.random() * validMoves.length)];
+      }
+    },
+    [getValidMoves, evaluateMove, evaluateWinningMove, evaluateStrategicValue]
+  );
 
   const startGame = () => {
     setGameStarted(true);
@@ -286,6 +527,8 @@ const Game = () => {
     (row, col) => {
       if (!gameStarted || isAnimating || gameOver) return;
 
+      // Note: AI moves are allowed through, human clicks during AI turn are handled by UI
+
       const cell = grid[row][col];
 
       // Check if move is valid
@@ -380,6 +623,38 @@ const Game = () => {
     ]
   );
 
+  // AI Move Handler - moved here after all functions are defined
+  useEffect(() => {
+    if (!gameStarted || isAnimating || gameOver) return;
+
+    if (isAiPlayer(currentPlayer)) {
+      // Schedule AI move with delay
+      const timeout = setTimeout(() => {
+        const aiMove = getAiMove(grid, currentPlayer, aiDifficulty);
+
+        if (aiMove) {
+          // Simply call the existing handleCellClick function
+          handleCellClick(aiMove.row, aiMove.col);
+        }
+      }, 1000 + Math.random() * 500);
+
+      // Cleanup timeout on unmount or when dependencies change
+      return () => {
+        clearTimeout(timeout);
+      };
+    }
+  }, [
+    currentPlayer,
+    gameStarted,
+    isAnimating,
+    gameOver,
+    grid,
+    aiDifficulty,
+    isAiPlayer,
+    getAiMove,
+    handleCellClick,
+  ]);
+
   const resetGame = () => {
     setGameStarted(false);
     setCurrentPlayer(0);
@@ -390,6 +665,9 @@ const Game = () => {
     setPlayersWhoHadTurn(new Set());
     setPlayerNames(["", "", "", ""]);
     setGridSize(10);
+    setGameMode("multiplayer");
+    setAiDifficulty("medium");
+    setNumberOfPlayers(2);
     setGrid(
       Array(10)
         .fill(null)
@@ -409,12 +687,48 @@ const Game = () => {
     return (
       <div className='game-setup'>
         <h2>Game Setup</h2>
+
+        <div className='game-mode-selection'>
+          <label>
+            Game Mode:
+            <select
+              value={gameMode}
+              onChange={(e) => {
+                setGameMode(e.target.value);
+                if (e.target.value === "ai") {
+                  setNumberOfPlayers(2); // AI mode defaults to 1 human vs 1 AI
+                }
+              }}
+            >
+              <option value='multiplayer'>Human vs Human</option>
+              <option value='ai'>Human vs AI</option>
+            </select>
+          </label>
+        </div>
+
+        {gameMode === "ai" && (
+          <div className='ai-difficulty-selection'>
+            <label>
+              AI Difficulty:
+              <select
+                value={aiDifficulty}
+                onChange={(e) => setAiDifficulty(e.target.value)}
+              >
+                <option value='easy'>Easy</option>
+                <option value='medium'>Medium</option>
+                <option value='hard'>Hard</option>
+              </select>
+            </label>
+          </div>
+        )}
+
         <div className='player-selection'>
           <label>
             Number of Players:
             <select
               value={numberOfPlayers}
               onChange={(e) => setNumberOfPlayers(parseInt(e.target.value))}
+              disabled={gameMode === "ai"}
             >
               <option value={2}>2 Players</option>
               <option value={3}>3 Players</option>
@@ -446,14 +760,21 @@ const Game = () => {
                   className='color-circle'
                   style={{ backgroundColor: PLAYER_COLORS[index] }}
                 ></div>
-                <input
-                  type='text'
-                  placeholder={`Player ${index + 1}`}
-                  value={playerNames[index]}
-                  onChange={(e) => updatePlayerName(index, e.target.value)}
-                  className='player-name-input'
-                  maxLength={20}
-                />
+                {isAiPlayer(index) ? (
+                  <div className='ai-player-label'>
+                    <span>AI Player {index}</span>
+                    <span className='ai-difficulty-badge'>{aiDifficulty}</span>
+                  </div>
+                ) : (
+                  <input
+                    type='text'
+                    placeholder={`Player ${index + 1}`}
+                    value={playerNames[index]}
+                    onChange={(e) => updatePlayerName(index, e.target.value)}
+                    className='player-name-input'
+                    maxLength={20}
+                  />
+                )}
               </div>
             ))}
         </div>
@@ -475,12 +796,21 @@ const Game = () => {
         <div className='game-info'>
           <div className='current-player'>
             <h3>Current Player:</h3>
-            <div className='player-indicator'>
+            <div
+              className={`player-indicator ${
+                isAiPlayer(currentPlayer) ? "ai-turn" : ""
+              }`}
+            >
               <div
                 className='player-color'
                 style={{ backgroundColor: PLAYER_COLORS[currentPlayer] }}
               ></div>
               <span>{getPlayerDisplayName(currentPlayer)}</span>
+              {isAiPlayer(currentPlayer) && (
+                <div className='ai-thinking-indicator'>
+                  <span>🤖</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -496,7 +826,7 @@ const Game = () => {
                     key={index}
                     className={`player-item ${isActive ? "active" : ""} ${
                       isEliminated ? "eliminated" : ""
-                    }`}
+                    } ${isAiPlayer(index) ? "ai-player" : ""}`}
                   >
                     <div
                       className='player-color'
@@ -505,6 +835,9 @@ const Game = () => {
                     <div className='player-info'>
                       <span className='player-name'>
                         {getPlayerDisplayName(index)}
+                        {isAiPlayer(index) && (
+                          <span className='ai-icon'>🤖</span>
+                        )}
                       </span>
                       <span className='player-dots'>
                         {isEliminated
